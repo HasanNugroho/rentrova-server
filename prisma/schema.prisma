@@ -7,34 +7,267 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ─── ENUMS ───────────────────────────────────────────────
+
+enum Role {
+  SUPER_ADMIN
+  TENANT_OWNER
+  STAFF
+  DRIVER
+}
+
+enum VehicleStatus {
+  AVAILABLE
+  BOOKED
+  MAINTENANCE
+}
+
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  ONGOING
+  COMPLETED
+  CANCELED
+}
+
+enum PaymentStatus {
+  UNPAID
+  PAID
+  REFUNDED
+}
+
+enum SubscriptionPlan {
+  BASIC
+  PRO
+  ENTERPRISE
+}
+
+enum SubscriptionStatus {
+  TRIAL
+  ACTIVE
+  EXPIRED
+}
+
+enum PricingType {
+  PER_KM
+  PER_DAY
+  DRIVER
+  AREA
+}
+
+enum DriverStatus {
+  AVAILABLE
+  ON_TRIP
+  OFF_DUTY
+}
+
+// ─── MODELS ──────────────────────────────────────────────
+
+model Tenant {
+  id                String             @id @default(cuid())
+  name              String
+  email             String             @unique
+  phone             String?
+  address           String?
+  subscriptionPlan  SubscriptionPlan   @default(BASIC)
+  status            String             @default("active")
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  users             User[]
+  vehicles          Vehicle[]
+  bookings          Booking[]
+  customers         Customer[]
+  drivers           Driver[]
+  transactions      Transaction[]
+  pricingRules      PricingRule[]
+  maintenanceLogs   MaintenanceLog[]
+  subscriptions     Subscription[]
+}
+
 model User {
+  id         String   @id @default(cuid())
+  tenantId   String?
+  name       String
+  email      String   @unique
+  password   String
+  role       Role     @default(STAFF)
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  tenant     Tenant?    @relation(fields: [tenantId], references: [id])
+  bookings   Booking[]
+  auditLogs  AuditLog[]
+
+  @@index([tenantId])
+}
+
+model Vehicle {
+  id           String        @id @default(cuid())
+  tenantId     String
+  plateNumber  String
+  brand        String?
+  model        String?
+  year         Int?
+  color        String?
+  type         String
+  capacity     Int
+  pricePerDay  Decimal
+  status       VehicleStatus @default(AVAILABLE)
+  notes        String?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  tenant          Tenant           @relation(fields: [tenantId], references: [id])
+  bookings        Booking[]
+  maintenanceLogs MaintenanceLog[]
+
+  @@index([tenantId])
+  @@unique([tenantId, plateNumber])
+}
+
+model Booking {
+  id           String        @id @default(cuid())
+  tenantId     String
+  customerId   String
+  vehicleId    String
+  driverId     String?
+  userId       String
+  startDate    DateTime
+  endDate      DateTime
+  distanceKm   Decimal?
+  totalPrice   Decimal
+  notes        String?
+  status       BookingStatus @default(PENDING)
+  cancelReason String?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  tenant      Tenant       @relation(fields: [tenantId], references: [id])
+  customer    Customer     @relation(fields: [customerId], references: [id])
+  vehicle     Vehicle      @relation(fields: [vehicleId], references: [id])
+  driver      Driver?      @relation(fields: [driverId], references: [id])
+  user        User         @relation(fields: [userId], references: [id])
+  transaction Transaction?
+
+  @@index([tenantId])
+  @@index([startDate, endDate])
+  @@index([vehicleId])
+  @@index([driverId])
+}
+
+model Customer {
+  id             String   @id @default(cuid())
+  tenantId       String
+  name           String
+  phone          String
+  email          String?
+  identityNumber String
+  address        String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  tenant   Tenant    @relation(fields: [tenantId], references: [id])
+  bookings Booking[]
+
+  @@index([tenantId])
+}
+
+model Driver {
+  id            String       @id @default(cuid())
+  tenantId      String
+  name          String
+  phone         String
+  licenseNumber String?
+  status        DriverStatus @default(AVAILABLE)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  tenant   Tenant    @relation(fields: [tenantId], references: [id])
+  bookings Booking[]
+
+  @@index([tenantId])
+}
+
+model Transaction {
+  id            String        @id @default(cuid())
+  tenantId      String
+  bookingId     String        @unique
+  amount        Decimal
+  paymentStatus PaymentStatus @default(UNPAID)
+  paymentMethod String?
+  paidAt        DateTime?
+  notes         String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id])
+  booking Booking @relation(fields: [bookingId], references: [id])
+
+  @@index([tenantId])
+}
+
+model PricingRule {
+  id          String      @id @default(cuid())
+  tenantId    String
+  type        PricingType
+  value       Decimal
+  description String?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId])
+  @@unique([tenantId, type])
+}
+
+model MaintenanceLog {
   id        String   @id @default(cuid())
-  email     String   @unique
-  password  String
-  name      String?
-  role      Role     @default(USER)
-  isActive  Boolean  @default(true)
+  tenantId  String
+  vehicleId String
+  date      DateTime
+  cost      Decimal
+  type      String?
+  notes     String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  refreshTokens RefreshToken[]
+  tenant  Tenant  @relation(fields: [tenantId], references: [id])
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id])
 
-  @@map("users")
+  @@index([tenantId])
+  @@index([vehicleId])
 }
 
-model RefreshToken {
+model Subscription {
+  id        String             @id @default(cuid())
+  tenantId  String
+  plan      SubscriptionPlan
+  startDate DateTime
+  endDate   DateTime
+  status    SubscriptionStatus @default(TRIAL)
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId])
+}
+
+model AuditLog {
   id        String   @id @default(cuid())
-  token     String   @unique
+  tenantId  String?
   userId    String
-  expiresAt DateTime
+  action    String
+  entity    String?
+  entityId  String?
+  meta      Json?
   createdAt DateTime @default(now())
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id])
 
-  @@map("refresh_tokens")
-}
-
-enum Role {
-  USER
-  ADMIN
+  @@index([tenantId])
+  @@index([userId])
 }
