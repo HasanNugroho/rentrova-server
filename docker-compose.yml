@@ -1,0 +1,55 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: rentrova-server
+    ports:
+      - '3000:3000'
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/rentrova_db?schema=public
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - rentrova-network
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: rentrova-postgres
+    ports:
+      - '5432:5432'
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=rentrova_db
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - rentrova-network
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: rentrova-redis
+    ports:
+      - '6379:6379'
+    volumes:
+      - redis-data:/data
+    networks:
+      - rentrova-network
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
+  redis-data:
+
+networks:
+  rentrova-network:
+    driver: bridge
